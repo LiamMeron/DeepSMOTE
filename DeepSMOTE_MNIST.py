@@ -17,10 +17,10 @@ t3 = time.time()
 """args for AE"""
 
 args = {}
-args["dim_h"] = 64  # factor controlling size of hidden layers
+args["dim_h"] = 64  # factor controlling size of hidden layers TODO play w/
 args["n_channel"] = 1  # 3    # number of channels in the input data
 
-args["n_z"] = 300  # 600     # number of dimensions in latent space.
+args["n_z"] = 300  # 600     # number of dimensions in latent space. TODO play w/
 
 args["sigma"] = 1.0  # variance in n_z
 args["lambda"] = 0.01  # hyper param for weight of discriminator loss
@@ -30,7 +30,7 @@ args["batch_size"] = 100  # batch size for SGD
 args["save"] = True  # save weights at each epoch of training if True
 args["train"] = True  # train networks if True, else load networks from
 
-args["dataset"] = "mnist"  # 'fmnist' # specify which dataset to use
+args["dataset"] = "mnist"  # 'fmnist' # specify which dataset to use TODO play w/
 
 
 ##############################################################################
