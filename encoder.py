@@ -2,12 +2,18 @@ from torch import nn as nn
 
 
 class Encoder(nn.Module):
-    def __init__(self, args):
+    def __init__(
+        self,
+        dim_h,
+        n_channel,
+        n_z,
+        **kwargs
+    ):
         super(Encoder, self).__init__()
 
-        self.n_channel = args["n_channel"]
-        self.dim_h = args["dim_h"]
-        self.n_z = args["n_z"]
+        self.n_channel = n_channel
+        self.dim_h = dim_h
+        self.n_z = n_z
 
         # convolutional filters, work excellent with image data
         self.conv = nn.Sequential(

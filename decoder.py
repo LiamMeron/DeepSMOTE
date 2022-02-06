@@ -2,12 +2,25 @@ from torch import nn as nn
 
 
 class Decoder(nn.Module):
-    def __init__(self, args):
+    def __init__(
+        self,
+        dim_h,
+        n_channel,
+        n_z,
+        sigma,
+        p_lambda,
+        lr,
+        epochs,
+        batch_size,
+        save,
+        train,
+        **kwargs
+    ):
         super(Decoder, self).__init__()
 
-        self.n_channel = args["n_channel"]
-        self.dim_h = args["dim_h"]
-        self.n_z = args["n_z"]
+        self.n_channel = n_channel
+        self.dim_h = dim_h
+        self.n_z = n_z
 
         # first layer is fully connected
         self.fc = nn.Sequential(nn.Linear(self.n_z, self.dim_h * 8 * 7 * 7), nn.ReLU())

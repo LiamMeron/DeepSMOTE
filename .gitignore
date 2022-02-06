@@ -130,3 +130,7 @@ dmypy.json
 
 # .idea
 .idea/*
+
+# encoders and decoders
+*.pth
+*.npy

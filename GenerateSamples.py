@@ -25,7 +25,7 @@ args["n_channel"] = 1  # number of channels in the input data
 args["n_z"] = 300  # 600     # number of dimensions in latent space.
 
 args["sigma"] = 1.0  # variance in n_z
-args["lambda"] = 0.01  # hyper param for weight of discriminator loss
+args["p_lambda"] = 0.01  # hyper param for weight of discriminator loss
 args["lr"] = 0.0002  # learning rate for Adam optimizer .000
 args["epochs"] = 1  # 50         # how many epochs to run for
 args["batch_size"] = 100  # batch size for SGD
@@ -34,32 +34,36 @@ args["train"] = True  # train networks if True, else load networks from
 
 args["dataset"] = "mnist"  #'fmnist' # specify which dataset to use
 
+number_of_folds = 5
+
+
 ##############################################################################
 
 
 def biased_get_class1(c):
 
-    xbeg = dec_x[dec_y == c]
-    ybeg = dec_y[dec_y == c]
+    xbeg = images[labels == c]
+    ybeg = labels[labels == c]
 
     return xbeg, ybeg
-    # return xclass, yclass
 
 
-def G_SM1(X, y, n_to_sample, cl):
+def GenerateSamples(X, y, n_to_sample, cl):
 
     # fitting the model
-    n_neigh = 5 + 1
-    nn = NearestNeighbors(n_neighbors=n_neigh, n_jobs=1)
-    nn.fit(X)
-    dist, ind = nn.kneighbors(X)
+    n_neighbors = number_of_folds + 1
+
+    # TODO n_jobs=1 means to use one job in parallel. Consider putting this to -1 to use all processors.
+    nearest_neighbors = NearestNeighbors(n_neighbors=n_neighbors, n_jobs=1)
+    nearest_neighbors.fit(X)
+    distances, indices = nearest_neighbors.kneighbors(X)
 
     # generating samples
     base_indices = np.random.choice(list(range(len(X))), n_to_sample)
-    neighbor_indices = np.random.choice(list(range(1, n_neigh)), n_to_sample)
+    neighbor_indices = np.random.choice(list(range(1, n_neighbors)), n_to_sample)
 
     X_base = X[base_indices]
-    X_neighbor = X[ind[base_indices, neighbor_indices]]
+    X_neighbor = X[indices[base_indices, neighbor_indices]]
 
     samples = X_base + np.multiply(np.random.rand(n_to_sample, 1), X_neighbor - X_base)
 
@@ -68,137 +72,147 @@ def G_SM1(X, y, n_to_sample, cl):
 
 
 #############################################################################
-np.printoptions(precision=5, suppress=True)
+np.printoptions(precision=number_of_folds, suppress=True)
 
-dtrnimg = ".../0_trn_img.txt"
-dtrnlab = ".../0_trn_lab.txt"
+training_image_dir = ".../0_trn_img.txt"
+training_labels_dir = ".../0_trn_lab.txt"
 
-ids = os.listdir(dtrnimg)
-idtri_f = [os.path.join(dtrnimg, image_id) for image_id in ids]
-print(idtri_f)
+ids = os.listdir(training_image_dir)
+training_image_files = [os.path.join(training_image_dir, image_id) for image_id in ids]
+print(training_image_files)
 
-ids = os.listdir(dtrnlab)
-idtrl_f = [os.path.join(dtrnlab, image_id) for image_id in ids]
-print(idtrl_f)
+ids = os.listdir(training_labels_dir)
+training_label_files = [os.path.join(training_labels_dir, image_id) for image_id in ids]
+print(training_label_files)
 
+# TODO parameterize
 # path on the computer where the models are stored
-modpth = ".../MNIST/models/crs5/"
+model_path = ".../MNIST/models/crs5/"
 
-encf = []
-decf = []
-for p in range(5):
-    enc = modpth + "/" + str(p) + "/bst_enc.pth"
-    dec = modpth + "/" + str(p) + "/bst_dec.pth"
-    encf.append(enc)
-    decf.append(dec)
-    # print(enc)
-    # print(dec)
-    # print()
+encoder_folders = []
+decoder_folders = []
+for fold in range(number_of_folds):
+    current_encoder_path = model_path + "/" + str(fold) + "/bst_enc.pth"
+    current_decoder_path = model_path + "/" + str(fold) + "/bst_dec.pth"
+    encoder_folders.append(current_encoder_path)
+    decoder_folders.append(current_decoder_path)
 
-for m in range(5):
-    print(m)
-    trnimgfile = idtri_f[m]
-    trnlabfile = idtrl_f[m]
-    print(trnimgfile)
-    print(trnlabfile)
-    dec_x = np.loadtxt(trnimgfile)
-    dec_y = np.loadtxt(trnlabfile)
 
-    print("train imgs before reshape ", dec_x.shape)  # (44993, 3072) 45500, 3072)
-    print("train labels ", dec_y.shape)  # (44993,) (45500,)
+for fold_num in range(number_of_folds):
+    print(f"Starting {fold_num}...")
+    training_image_file = training_image_files[fold_num]
+    training_label_file = training_label_files[fold_num]
+    print(training_image_file)
+    print(training_label_file)
+    images = np.loadtxt(training_image_file)
+    labels = np.loadtxt(training_label_file)
 
-    dec_x = dec_x.reshape(dec_x.shape[0], 1, 28, 28)
+    print("train imgs before reshape ", images.shape)
+    print("train labels ", labels.shape)
 
-    print("decy ", dec_y.shape)
-    print(collections.Counter(dec_y))
+    images = images.reshape(images.shape[0], 1, 28, 28)
 
-    print("train imgs after reshape ", dec_x.shape)  # (45000,3,32,32)
+    print("decy ", labels.shape)
+    print(collections.Counter(labels))
 
+    print("train imgs after reshape ", images.shape)
+
+    # TODO classes should be passed in? Uhhh, this is not used ANYWHERE. Why is it hardcoded? - WC
     classes = ("0", "1", "2", "3", "4", "5", "6", "7", "8", "9")
 
-    # generate some images
-    train_on_gpu = torch.cuda.is_available()
+    # Set device to CUDA if available else use CPU (slower)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    path_enc = encf[m]
-    path_dec = decf[m]
+    encoder_for_current_fold = encoder_folders[fold_num]
+    decoder_for_current_fold = decoder_folders[fold_num]
 
-    encoder = Encoder(args)
-    encoder.load_state_dict(torch.load(path_enc), strict=False)
+    encoder = Encoder(**args)
+    encoder.load_state_dict(torch.load(encoder_for_current_fold), strict=False)
     encoder = encoder.to(device)
 
-    decoder = Decoder(args)
-    decoder.load_state_dict(torch.load(path_dec), strict=False)
+    decoder = Decoder(**args)
+    decoder.load_state_dict(torch.load(decoder_for_current_fold), strict=False)
     decoder = decoder.to(device)
 
     encoder.eval()
     decoder.eval()
 
+    # TODO Add element_counts_per_class as parameter?
     # imbal = [4500, 2000, 1000, 800, 600, 500, 400, 250, 150, 80]
-    imbal = [4000, 2000, 1000, 750, 500, 350, 200, 100, 60, 40]
+    element_counts_per_class = [4000, 2000, 1000, 750, 500, 350, 200, 100, 60, 40]
 
     resx = []
     resy = []
 
+    # TODO This seems to be related to the number of classes, should be generic?
     for i in range(1, 10):
-        xclass, yclass = biased_get_class1(i)
-        print(xclass.shape)  # (500, 3, 32, 32)
-        print(yclass[0])  # (500,)
+        images_for_class_i, labels_for_class_i = biased_get_class1(i)
+        print(images_for_class_i.shape)  # (500, 3, 32, 32)
+        print(labels_for_class_i[0])  # (500,)
 
-        # encode xclass to feature space
-        xclass = torch.Tensor(xclass)
-        xclass = xclass.to(device)
-        xclass = encoder(xclass)
-        print(xclass.shape)  # torch.Size([500, 600])
+        # encode images_for_class_i to feature space
+        images_for_class_i = torch.Tensor(images_for_class_i)
+        images_for_class_i = images_for_class_i.to(device)
+        images_for_class_i = encoder(images_for_class_i)
+        print(images_for_class_i.shape)
 
-        xclass = xclass.detach().cpu().numpy()
-        n = imbal[0] - imbal[i]
-        xsamp, ysamp = G_SM1(xclass, yclass, n, i)
-        print(xsamp.shape)  # (4500, 600)
-        print(len(ysamp))  # 4500
-        ysamp = np.array(ysamp)
-        print(ysamp.shape)  # 4500
+        images_for_class_i = images_for_class_i.detach().cpu().numpy()
+        number_of_samples_needed_for_balance = (
+            element_counts_per_class[0] - element_counts_per_class[i]
+        )
+        sample_images, sample_classes = GenerateSamples(
+            images_for_class_i, labels_for_class_i, number_of_samples_needed_for_balance, i
+        )
+        print(sample_images.shape)  # (4500, 600)
+        print(len(sample_classes))  # 4500
+        sample_classes = np.array(sample_classes)
+        print(sample_classes.shape)  # 4500
 
         """to generate samples for resnet"""
-        xsamp = torch.Tensor(xsamp)
-        xsamp = xsamp.to(device)
-        # xsamp = xsamp.view(xsamp.size()[0], xsamp.size()[1], 1, 1)
-        # print(xsamp.size()) #torch.Size([10, 600, 1, 1])
-        ximg = decoder(xsamp)
+        sample_images = torch.Tensor(sample_images)
+        sample_images = sample_images.to(device)
 
+        # TODO: Remember that X are image collections and Y are label collections (in same order). I am unsure what the
+        #  ximg/ximn var names are intended to be, but ximg doees not appear to be used aside from the detach.cpu.numpy
+        #  conversion which apapears to take the decoded images and converting them to numpy arrays(?). I am unsure about
+        #  this but it seems to read logically....
+        ximg = decoder(sample_images)
         ximn = ximg.detach().cpu().numpy()
         print(ximn.shape)  # (4500, 3, 32, 32)
-        # ximn = np.expand_dims(ximn,axis=1)
-        print(ximn.shape)  # (4500, 3, 32, 32)
-        resx.append(ximn)
-        resy.append(ysamp)
-        # print('resx ',resx.shape)
-        # print('resy ',resy.shape)
-        # print()
 
+        resx.append(ximn)
+        resy.append(sample_classes)
+
+    # TODO (RENAME): resx1 and resy1 may be resampled X and Y (images and labels) from all 10 class runs. This takes the images
+    #  and repacks the collection of 3D+ arrays into an array of rows, presumably to ensure they print easily to a txt file
     resx1 = np.vstack(resx)
+    # hstack stacks the labels in column order? I guess it takes a 1-D array of labels and stores them in numpy as a single
+    #  row so that they can be indexed with the same index as the image array...
     resy1 = np.hstack(resy)
-    # print(resx1.shape) #(34720, 3, 32, 32)
-    # resx1 = np.squeeze(resx1)
+
     print(resx1.shape)  # (34720, 3, 32, 32)
     print(resy1.shape)  # (34720,)
 
     resx1 = resx1.reshape(resx1.shape[0], -1)
     print(resx1.shape)  # (34720, 3072)
 
-    dec_x1 = dec_x.reshape(dec_x.shape[0], -1)
+    dec_x1 = images.reshape(images.shape[0], -1)
     print("decx1 ", dec_x1.shape)
-    combx = np.vstack((resx1, dec_x1))
-    comby = np.hstack((resy1, dec_y))
+    combx = np.vstack(
+        (resx1, dec_x1)
+    )  # Combine the 3d arrays into rows to prepare for loading back to image file
+    comby = np.hstack(
+        (resy1, labels)
+    )  # Combine the label arrays into rows to prepare for loading back to label file
 
     print(combx.shape)  # (45000, 3, 32, 32)
     print(comby.shape)  # (45000,)
 
-    ifile = ".../MNIST/trn_img_f/" + str(m) + "_trn_img.txt"
-    np.savetxt(ifile, combx)
+    image_file_name = ".../MNIST/trn_img_f/" + str(fold_num) + "_trn_img.txt"
+    np.savetxt(image_file_name, combx)
 
-    lfile = ".../MNIST/trn_lab_f/" + str(m) + "_trn_lab.txt"
-    np.savetxt(lfile, comby)
+    label_file_name = ".../MNIST/trn_lab_f/" + str(fold_num) + "_trn_lab.txt"
+    np.savetxt(label_file_name, comby)
     print()
 
 t1 = time.time()
